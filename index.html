@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lightning Invoice Generator (Dark)</title>
+<style>
+  body {
+    font-family: sans-serif;
+    max-width: 500px;
+    margin: 2em auto;
+    background-color: #121212;
+    color: #e0e0e0;
+  }
+  input, button {
+    font-size: 1em;
+    padding: 0.5em;
+    margin: 0.3em 0;
+    width: 100%;
+    border-radius: 5px;
+    border: none;
+  }
+  input {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+  }
+  button {
+    background-color: #6200ee;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover { background-color: #3700b3; }
+  #invoice {
+    word-break: break-all;
+    margin: 1em 0;
+    background-color: #1e1e1e;
+    padding: 0.5em;
+    border-radius: 5px;
+  }
+  #qr { margin-top: 1em; }
+  #copyBtn { background-color: #03dac6; color: #000; }
+  #copyBtn:hover { background-color: #018786; }
+  #notice { margin-top: 0.5em; font-size: 0.9em; color: #ff9800; }
+</style>
+</head>
+<body>
+
+<h2>⚡ Lightning Invoice Generator (Dark)</h2>
+
+<input id="input" placeholder="Lightning Address or LNURL (.onion supported)" />
+<input id="amount" type="number" placeholder="Satoshis" />
+<button onclick="generateInvoice()">Generate Invoice</button>
+
+<div id="notice"></div>
+<pre id="invoice"></pre>
+<div id="qr"></div>
+<button id="copyBtn" style="display:none;" onclick="copyInvoice()">Copy Invoice</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script>
+async function generateInvoice() {
+  const input = document.getElementById("input").value.trim();
+  const sats = parseInt(document.getElementById("amount").value, 10);
+  const invoiceEl = document.getElementById("invoice");
+  const qrEl = document.getElementById("qr");
+  const copyBtn = document.getElementById("copyBtn");
+  const notice = document.getElementById("notice");
+
+  invoiceEl.textContent = "";
+  qrEl.innerHTML = "";
+  copyBtn.style.display = "none";
+  notice.textContent = "";
+
+  if (!input || !sats || sats <= 0) {
+    invoiceEl.textContent = "Please enter valid input and amount.";
+    return;
+  }
+
+  let lnurl = input;
+
+  // Detect Lightning Address (name@domain) or .onion
+  if (input.includes("@")) {
+    const [name, domain] = input.split("@");
+    lnurl = (domain.endsWith(".onion") ? "http" : "https") + `://${domain}/.well-known/lnurlp/${name}`;
+
+    if (domain.endsWith(".onion")) {
+      notice.textContent = "⚠️ .onion addresses require Tor Browser or a Tor proxy to work.";
+    }
+  } else if (input.endsWith(".onion")) {
+    // Direct .onion LNURL
+    notice.textContent = "⚠️ .onion addresses require Tor Browser or a Tor proxy to work.";
+  }
+
+  try {
+    // Step 1: Fetch LNURL-pay metadata
+    const res = await fetch(lnurl);
+    const data = await res.json();
+    if (!data.callback) throw "Invalid LNURL-pay endpoint";
+
+    // Step 2: Request invoice
+    const msats = sats * 1000;
+    const callbackUrl = new URL(data.callback);
+    callbackUrl.searchParams.set("amount", msats);
+
+    const invoiceRes = await fetch(callbackUrl.toString());
+    const invoiceData = await invoiceRes.json();
+    if (!invoiceData.pr) throw "Failed to get invoice";
+
+    invoiceEl.textContent = invoiceData.pr;
+
+    // Step 3: Generate QR
+    const qr = new QRious({ element: document.createElement("canvas"), value: invoiceData.pr, size: 200 });
+    qrEl.appendChild(qr.canvas);
+
+    // Step 4: Show copy button
+    copyBtn.style.display = "inline-block";
+
+  } catch (err) {
+    invoiceEl.textContent = "Error: " + err;
+  }
+}
+
+function copyInvoice() {
+  const invoice = document.getElementById("invoice").textContent;
+  navigator.clipboard.writeText(invoice).then(() => {
+    alert("Invoice copied!");
+  });
+}
+</script>
+</body>
+</html>
