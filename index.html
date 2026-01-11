@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Lightning Invoice Generator (Single Invoice)</title>
+<title>Lightning Invoice Generator</title>
 <style>
   body {
     font-family: sans-serif;
@@ -29,33 +29,20 @@
     cursor: pointer;
   }
   button:hover { background-color: #3700b3; }
-  #notice {
-    margin-top: 0.5em;
-    font-size: 0.9em;
-    color: #ff9800;
-  }
-  #invoiceBox {
-    display: none;
-    flex-direction: row;
-    align-items: center;
+  #invoiceField {
     background-color: #1e1e1e;
-    border-radius: 5px;
     padding: 0.5em;
-    cursor: pointer;
+    border-radius: 5px;
+    word-break: break-all;
     margin-top: 1em;
   }
-  #invoiceBox:hover { background-color: #2a2a2a; }
-  #invoiceText {
-    word-break: break-all;
-    flex: 1;
-    margin-right: 1em;
-  }
-  canvas { border-radius: 5px; }
+  #qr { margin-top: 1em; }
+  #notice { margin-top: 0.5em; font-size: 0.9em; color: #ff9800; }
 </style>
 </head>
 <body>
 
-<h2>⚡ Lightning Invoice Generator</h2>
+<h2>⚡ Lightning Invoice Generator (Dark)</h2>
 
 <input id="input" placeholder="Lightning Address or LNURL (.onion supported)" />
 <input id="amount" type="number" placeholder="Satoshis" />
@@ -63,31 +50,31 @@
 
 <div id="notice"></div>
 
-<div id="invoiceBox" onclick="copyInvoice()">
-  <pre id="invoiceText"></pre>
-  <div id="qr"></div>
-</div>
+<!-- Separate invoice string field -->
+<div id="invoiceField"></div>
+
+<!-- QR will appear here, only one at a time -->
+<div id="qr"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
 <script>
-let currentQR = null; // Keep track of the QR canvas
+let currentQR = null; // keep track of the QR canvas
 
 async function generateInvoice() {
   const input = document.getElementById("input").value.trim();
   const sats = parseInt(document.getElementById("amount").value, 10);
-  const invoiceText = document.getElementById("invoiceText");
+  const invoiceField = document.getElementById("invoiceField");
   const qrEl = document.getElementById("qr");
-  const invoiceBox = document.getElementById("invoiceBox");
   const notice = document.getElementById("notice");
 
-  // Clear previous invoice/QR
-  invoiceText.textContent = "";
+  // Clear previous invoice and QR
+  invoiceField.textContent = "";
   qrEl.innerHTML = "";
-  invoiceBox.style.display = "none";
+  currentQR = null;
   notice.textContent = "";
 
   if (!input || !sats || sats <= 0) {
-    notice.textContent = "Please enter valid input and amount.";
+    invoiceField.textContent = "Please enter valid input and amount.";
     return;
   }
 
@@ -105,10 +92,12 @@ async function generateInvoice() {
   }
 
   try {
+    // Fetch LNURL-pay metadata
     const res = await fetch(lnurl);
     const data = await res.json();
     if (!data.callback) throw "Invalid LNURL-pay endpoint";
 
+    // Request invoice
     const msats = sats * 1000;
     const callbackUrl = new URL(data.callback);
     callbackUrl.searchParams.set("amount", msats);
@@ -117,26 +106,16 @@ async function generateInvoice() {
     const invoiceData = await invoiceRes.json();
     if (!invoiceData.pr) throw "Failed to get invoice";
 
-    // Show invoice
-    invoiceText.textContent = invoiceData.pr;
+    // Display invoice in separate field
+    invoiceField.textContent = invoiceData.pr;
 
-    // Generate QR
-    currentQR = new QRious({ element: document.createElement("canvas"), value: invoiceData.pr, size: 100 });
+    // Generate QR, replace previous if exists
+    currentQR = new QRious({ element: document.createElement("canvas"), value: invoiceData.pr, size: 200 });
     qrEl.appendChild(currentQR.canvas);
 
-    invoiceBox.style.display = "flex";
-
   } catch (err) {
-    notice.textContent = "Error: " + err;
+    invoiceField.textContent = "Error: " + err;
   }
-}
-
-function copyInvoice() {
-  const invoice = document.getElementById("invoiceText").textContent;
-  if (!invoice) return;
-  navigator.clipboard.writeText(invoice).then(() => {
-    alert("Invoice copied!");
-  });
 }
 </script>
 </body>
